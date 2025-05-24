@@ -1,0 +1,229 @@
+---
+title: "Análise Estatística ENADE 2017"
+author: "Geografia Licenciatura"
+output:
+  html_document:
+    self_contained: true
+    theme: paper
+---
+```{r setup, include=FALSE}
+library(tidyverse)
+library(plotly)
+library(e1071)
+library(Hmisc)
+library(esquisse)
+library(DescTools)
+library(gridExtra)
+library(formattable)
+library(PMCMR)
+bd=read_csv2("C:/Users/lanak/Documents/Projetos em R/Enad2017/bd.analise.new.csv")
+```
+### Introdução
+
+##### Vamos analisar os dados referentes ao Exame Nacional de Desempenho dos Estudantes (**ENADE**) do ano de 2017, mais precisamente o desempenho dos alunos do curso de Geografia Licenciatura no respectivo ano. 
+
+##### Serão avaliados as notas, bem como as características desses alunos (**Sexo**,**Turno** e **Região**), tudo isso com base nas análises descritivas feitas neste trabalho.
+
+###### Obs.: para fins de praticidade, os dados importados já serão com os devidos tratamentos: 1) Variáveis selecionadas como pedido na prova; 2) Filtro do Curso Selecionado; 3) Transformação dos rótulos das variáveis categóricas; 4) NA's retirados.  
+
+```{r,echo=FALSE}
+head(bd) 
+```
+
+##### Faremos então uma apresentação das variáveis presentes nos dados, com suas respectivas classificações quanto ao tipo de variável, bem como as medidas descritivas de todas elas.
+
+```{r}
+describe(bd$NT_OBJ_FG) # nota bruta da formação geral (quantitativa contínua)
+describe(bd$CO_GRUPO) # codigo do curso (qualitativa nominal)
+describe(bd$CO_REGIAO_CURSO) # codigo da regiao do curso (qualitativa nominal)
+describe(bd$QE_I02) # etnia do estudante (qualitativa nominal)
+describe(bd$CO_TURNO_GRADUACAO) # codigo do turno do curso (qualitativa nominal)
+```
+
+### Análise Estatística dos Dados
+
+##### Faremos agora uma análise geral nos dados, identificando se existe alguma variável com valores nulos (**NA's**).
+
+```{r,echo=FALSE}
+data.frame(bd %>% select(everything()) %>% 
+  summarise_all(list(~sum(is.na(.))))) # NA's por variavel
+
+```
+
+##### Podemos perceber que não há valores nulos em nenhuma variável presente nos  dados.
+
+##### Analisaremos agora as notas gerais (*NT_GER*) dos alunos de Geografia Licenciatura, por meio das medidas descritivas.
+
+```{r,echo=FALSE}
+bd %>% select(NT_GER)%>%
+  summarise(Quantidade=n(),Media = mean(NT_GER),Mediana = median(NT_GER),
+            Moda=Mode(NT_GER),CV=sd(NT_GER)/Media*100,Assimetria=skewness(NT_GER),
+            Curtose=kurtosis(NT_GER),Minimo=min(NT_GER),Maximo=max(NT_GER)) %>% arrange(desc(Quantidade)) %>% formattable()
+```
+
+##### Podemos perceber que a média das notas dos alunos está um pouco abaixo da nota média da prova (**Média = 45,4**), pois a nota pode variar de 0 a 100; 50% dos alunos tiraram notas um pouco inferiores em relação a média (**Mediana = 45,1**); e nenhum aluno tirou a nota máxima do exame (**Máximo = 95,4**). Em relação a disposição dos dados, percebemos pelo coeficiente de assimetria e curtose que se trata de uma amostra com assimetria negativa e de distribuição platicúrtica (**-0,02 e -0,34, respectivamente**)
+
+```{r, echo=FALSE}
+bd %>% ggplot(aes(x=NT_GER)) + 
+  geom_histogram(aes(y=..density..),fill="purple",bins=10)+
+  geom_density(color="red",size=1)+
+  labs(x="nota",y="frequência")+theme_minimal()+theme(axis.text.y = element_blank())+
+  ggtitle("Histograma da Nota Geral dos Alunos de Geografia Licenciatura")+
+  theme(plot.title = element_text(size = 12, face = "bold"))
+```
+
+##### Através do histograma acima podemos constatar a disposição dos dados quanto a sua assimetria, que é levemente a esquerda.
+
+##### Iremos analisar agora como essas notas se comportam quanto ao turno em que eles estão matriculados.
+
+```{r, echo=FALSE}
+bd %>% select(Turno,NT_GER) %>% group_by(Turno) %>%
+  summarise(Quantidade=n(),Media = mean(NT_GER),Mediana = median(NT_GER),
+            Moda=Mode(NT_GER),CV=sd(NT_GER)/Media*100,Assimetria=skewness(NT_GER),
+            Curtose=kurtosis(NT_GER)) %>% arrange(desc(Quantidade)) %>% formattable()
+```
+
+##### Percebemos que o turno com maior quantidade de alunos é o Noturno. O turno da Tarde aparece 3 vezes pois o turno apresenta 3 notas mais frequentemente (**Moda**). 
+##### O turno com melhor desempenho na prova foi o Integral (**Média = 46,41**) e cerca de 50% dos alunos obtiveram nota superior à Média (**Moda = 46,45**).
+##### De acordo com os dados podemos ver que existe indícios de que as notas não se diferenciam significativamente entre os turnos. 
+
+##### Para confirmar se essa diferença de fato não existe, vamos fazer um Teste de Hipóteses Não Paramétrico (usado quando não sabemos qual é a distribuição dos dados), pois sabemos que não se trata de uma Distribuição Normal (**Moda $\neq$ Media $\neq$ Moda**).
+
+```{r, echo=FALSE}
+teste1=bd %>% select(Turno,NT_GER)
+teste1$Turno<-as.factor(teste1$Turno)
+shapiro.test(sample(teste1$NT_GER,5000)) # nao eh normal
+kruskal.test(teste1$NT_GER~teste1$Turno)
+```
+
+##### O teste de normalidade de Shapiro-Wilk rejeitou a hipótese de que a distribuição dos dados seja Normal (**Valor-P < 0,01%**). Então foi feito o teste não paramétrico Kruskal-Wallis de semelhança de grupos, que não rejeitou a hipótese de que os turnos sejam semelhantes quanto a nota geral dos alunos (**Valor-P = 22,02%**). Esses testes levaram em consideração um nível de significância ($\alpha$) de 5%.
+
+##### Faremos a seguir uma análise cruzada do Sexo e Turno.
+
+```{r, echo=FALSE}
+df1 = bd %>% select(Sexo,Turno) %>% count(Sexo,Turno) 
+colnames(df1)[3]="freq_abs"
+df2 = df1 %>% add_count(Sexo,wt=freq_abs) %>% mutate("freq_relativa"=freq_abs/n)
+
+df2 %>% ggplot(aes(x=Turno,y=freq_relativa,fill=Sexo))+ 
+  geom_bar(stat="identity",show.legend = F)+labs(x="turno",y="frequência")+
+  theme_minimal()+theme(axis.text.y = element_blank())+
+  geom_text(aes(label=paste0(round(freq_relativa*100,2),"%"),group=Sexo),
+            vjust=-0.5,size=3.2)+facet_grid(~Sexo)+
+  ggtitle("Frequência dos Alunos de Geografia Licenciatura por Turno e Sexo")
+```
+
+##### O gráfico acima mostra a frequência relativa dos alunos quanto ao sexo e o turno. Notamos haver indícios de associação entre os grupos, pois os turnos se comportam de forma semelhante em ambos os sexos, mas para comprovar a análise empírica faremos o teste não paramétrico Qui-quadrado de Pearson, indicado para casos em que as variáveis envolvidas sejam categóricas e estejam dispostas em uma tabela de contingência.
+
+```{r, echo=FALSE}
+t4=table(bd$Turno,bd$Sexo)
+chisq.test(t4)
+```
+
+##### O resultado do teste comprova o que observamos anteriormente, pois mostra que a 5% de significância os turnos têm associação com o sexo dos alunos (**Valor-P = 0,9%**).
+
+##### A seguir uma análise do sexo dos alunos em relação a nota que eles obtiveram no exame.
+
+```{r, echo=FALSE}
+bd %>% select(Sexo,NT_GER) %>% group_by(Sexo) %>%
+  summarise(Quantidade=n(),Media = mean(NT_GER),Mediana = median(NT_GER),
+            Moda=Mode(NT_GER),CV=sd(NT_GER)/Media*100,Assimetria=skewness(NT_GER),
+            Curtose=kurtosis(NT_GER)) %>% arrange(desc(Quantidade))
+
+```
+
+##### Podemos perceber que a melhor nota foi obtida pelo sexo masculino (**Média = 47,2**) e que 50% dos homens tiveram notas acima da média (**Mediana = 47,7**). A nota mais frequentemente vista foi 52,1 (**Moda**).
+##### A distribuição da população feminina do curso possui assimetria positiva, diferentemente do visto nas notas gerais, indicando que mais mulheres tiveram notas menores que 50.
+
+```{r, echo=FALSE}
+bd %>% ggplot(aes(x=NT_GER)) + 
+  geom_histogram(aes(y=..density..,fill=Sexo),bins=50,show.legend = F)+
+  geom_density(color="red",size=1,show.legend = F)+
+  labs(x="nota",y="frequência")+theme_minimal()+theme(axis.text.y = element_blank())+
+  ggtitle("Histograma da Nota Geral dos Alunos de Geografia Licenciatura por Sexo")+
+  theme(plot.title = element_text(size = 12, face = "bold"))+facet_grid(~Sexo)
+```
+
+##### Com o gráfico percebemos que a curva do lado feminino tem a calda levemente mais pesada para o lado direito, com concentração dos dados no lado esquerdo, mostrando o que o coeficiente de assimetria indicou (assimetria positiva ou a direita). Já a curva do lado masculino é completamente o oposto.
+
+##### Veremos a seguir se existe diferença no desempenho dos alunos quanto ao sexo.
+
+```{r, echo=FALSE}
+teste1=bd %>% select(Sexo,NT_GER)
+teste1$Sexo<-as.factor(teste1$Sexo)
+kruskal.test(teste1$NT_GER~teste1$Sexo) 
+```
+
+##### Podemos afirmar que a 5% de significância o sexo masculino tenha desempenho diferente do sexo feminino (**Valor-P < 0,01%**)
+
+##### Vamos analisar agora o cruzamento entre **Turno** e **Região**.
+
+```{r, echo=FALSE}
+df3 = bd %>% select(Regiao,Turno) %>% count(Regiao,Turno) 
+colnames(df3)[3]="freq_abs"
+df4 = df3 %>% add_count(Regiao,wt=freq_abs) %>% mutate("freq_relativa"=freq_abs/n)
+
+df4 %>% ggplot(aes(x=Turno,y=freq_relativa,fill=Regiao))+ 
+  geom_bar(stat="identity",show.legend = F)+labs(x="turno",y="frequência")+
+  theme_minimal()+theme(axis.text.y = element_blank())+
+  geom_text(aes(label=paste0(round(freq_relativa*100,2),"%"),group=Regiao),
+            vjust=0.6,size=3.2)+facet_wrap(~Regiao,nrow=3)+
+  ggtitle("Frequência dos Alunos de Geografia Licenciatura por Turno e Região")
+```
+
+##### Percebemos que os turnos se comportam de forma bastante parecida em cada uma das regiões, exceto pela região Norte, pois os turnos da manhã e noite são bem semelhantes quanto a frequência dos alunos. Para tirarmos a conclusão sobre a existência de associação entre os turnos e as regiões faremos novamente o teste Qui-quadrado.
+
+```{r, echo=FALSE}
+t5=table(bd$Turno,bd$Regiao)
+chisq.test(t5)
+```
+
+##### Concluímos que, a 5% de significância as regiões estão associadas aos turnos em que os alunos estão matriculados.
+
+##### A seguir uma análise das regiões dos alunos em relação a nota que eles obtiveram no exame.
+
+```{r, echo=FALSE}
+bd %>% select(Regiao,NT_GER) %>% group_by(Regiao) %>%
+  summarise(Quantidade=n(),Media = mean(NT_GER),Mediana = median(NT_GER),
+            Moda=Mode(NT_GER),CV=sd(NT_GER)/Media*100,Assimetria=skewness(NT_GER),
+            Curtose=kurtosis(NT_GER)) %>% arrange(desc(Quantidade))
+```
+
+##### Vemos que a região mais populosa é a região Sudeste, em que a mesma contém as melhores notas. Já a região de pior desempenho foi a região Norte (**Média = 42,7**). Vemos regiões com assimetria negativa (Sudeste e Nordeste), por possuírem as notas mais altas, e as demais possuem assimetria positiva, por possuírem as notas mais baixas. Todas as regiões são platicúrticas.
+
+```{r, echo=FALSE}
+bd %>% ggplot(aes(x=NT_GER)) + 
+  geom_histogram(aes(y=..density..,fill=Regiao),bins=50,show.legend = F)+
+  geom_density(color="red",size=1,show.legend = F)+
+  labs(x="nota",y="frequência")+theme_minimal()+theme(axis.text.y = element_blank())+
+  ggtitle("Histograma da Nota Geral dos Alunos de Geografia Licenciatura por Sexo")+
+  theme(plot.title = element_text(size = 12, face = "bold"))+facet_wrap(~Regiao)
+```
+
+##### Vemos com mais precisão que a região Sudeste é de fato a região que mais possui notas altas. 
+
+##### Veremos a seguir se existe diferença no desempenho dos alunos quanto a região.
+
+```{r, echo=FALSE}
+
+teste1=bd %>% select(Regiao,NT_GER)
+teste1$Regiao<-as.factor(teste1$Regiao)
+kruskal.test(teste1$NT_GER~teste1$Regiao) 
+```
+
+##### Podemos afirmar que a 5% de significância as regiões têm desempenhos diferentes umas das outras.
+
+### Conclusão
+
+##### Portanto, ao fazermos uso das análises estatísticas vistas anteriormente, temos os seguintes *insights*:
+##### - O turno com melhor desempenho dos alunos, de um modo geral, é o Integral. 
+##### - Os homens, de um modo geral, possuem as melhores notas.
+##### - A região com melhor desempenho dos alunos, de um modo geral, é a região Sudeste.
+##### - Os alunos, independetemente do sexo, deram preferência ao turno da noite.
+##### - Os alunos, independente da região que vivem, estudam preferencialmente no turno da noite.
+##### - O sexo do aluno não influencia na escolha do turno em que se deseja estudar, bem como a região que ele habita.
+##### - A nota geral dos alunos depende tanto do sexo do aluno quanto da região em que vive.
+
+
+# Configuração para GitHub Pages
+knitr::opts_knit$set(output.dir = 'docs')

@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+.RData
+.Renviron
+*.html
+*.png
+*.csv
+docs/
+_cache/
